@@ -7,7 +7,6 @@ const User = require("./models/User")
 
 const resolvers = {
     Query: {
-        bookCount: async () => Book.collection.countDocuments(),
         authorCount: async () => Author.collection.countDocuments(),
         allBooks: async (root, args) => {
             let query = {}
@@ -29,17 +28,33 @@ const resolvers = {
 
             return await Book.find(query).populate("author")
         },
-        allAuthors: async () => Author.find({}),
+        allAuthors: async () => {
+            const authors = await Author.find({})
+
+            const books = await Book.find({}).populate("author")
+
+            const authorWithBookCount = books.reduce((t, b) => {
+                if (Object.hasOwn(t, b.author.name)) {
+                    t[b.author.name] += 1
+                } else {
+                    t[b.author.name] = 1
+                }
+
+                return t
+            }, {})
+
+            const finalAuthors = authors.map((a) => {
+                return {
+                    name: a.name,
+                    born: a.born,
+                    bookCount: authorWithBookCount[a.name],
+                }
+            })
+
+            return finalAuthors
+        },
         me: (root, args, context) => {
             return context.currentUser
-        },
-    },
-
-    Author: {
-        bookCount: async (root) => {
-            const books = await Book.find({ author: root._id })
-            const bookCount = books.length
-            return bookCount
         },
     },
 
@@ -92,7 +107,7 @@ const resolvers = {
                 const savedAuthor = await author.save()
                 book.author = savedAuthor._id
             } else {
-                book.author = authorExist._id
+                book.author = authorExist
             }
 
             const bookAdded = await book.save()

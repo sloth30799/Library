@@ -1,12 +1,29 @@
 import { useEffect, useState } from "react"
-import { useApolloClient, useQuery } from "@apollo/client"
+import { useApolloClient, useQuery, useSubscription } from "@apollo/client"
 import { Routes, Route, useNavigate } from "react-router-dom"
 import Authors from "./components/Authors"
 import Books from "./components/Books"
 import NewBook from "./components/NewBook"
 import Login from "./components/Login"
 import Recommend from "./components/Recommend"
-import { ALL_BOOKS, USER } from "./queries"
+import { ALL_BOOKS, BOOK_ADDED, USER } from "./queries"
+
+export const updateCache = (cache, query, addedBook) => {
+    // helper that is used to eliminate saving same person twice
+    const uniqByTitle = (a) => {
+        let seen = new Set()
+        return a.filter((item) => {
+            let k = item.title
+            return seen.has(k) ? false : seen.add(k)
+        })
+    }
+
+    cache.updateQuery(query, ({ allBooks }) => {
+        return {
+            allBooks: uniqByTitle(allBooks.concat(addedBook)),
+        }
+    })
+}
 
 const App = () => {
     const client = useApolloClient()
@@ -14,6 +31,14 @@ const App = () => {
     const [token, setToken] = useState(null)
     const result = useQuery(ALL_BOOKS)
     const userResult = useQuery(USER)
+
+    useSubscription(BOOK_ADDED, {
+        onData: ({ data }) => {
+            window.alert("New Book is added!")
+            const addedBook = data.data.bookAdded
+            updateCache(client.cache, { query: ALL_BOOKS }, addedBook)
+        },
+    })
 
     useEffect(() => {
         const storageToken = localStorage.getItem("library-user-token")
@@ -31,11 +56,10 @@ const App = () => {
         return <div>loading...</div>
     }
 
-    const favoriteGenre = userResult.data.me.favoriteGenre
-    const recommendBooks = result.data.allBooks.filter((b) =>
+    const favoriteGenre = userResult.data.me?.favoriteGenre
+    const recommendBooks = result.data.allBooks?.filter((b) =>
         b.genres.includes(favoriteGenre)
     )
-    console.log("🚀 ~ file: App.js:37 ~ App ~ recommendBooks:", recommendBooks)
 
     return (
         <div>
